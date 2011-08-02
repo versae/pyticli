@@ -1,0 +1,4 @@
+# Requirements file only for developing purposes.
+ipdb==0.4
+ipython==0.10.2
+wsgiref==0.1.2
