@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+from languages import GremlinLanguage, BaseQueryLanguage
+
 import ast
 
 
 class Program(object):
 
-    def __init__(self, proposition=None):
+    def __init__(self, proposition):
         self.proposition = proposition
         self.temporals = ("always", "next")
         self.logics = ("&", "|", "==", "!=", "<", "<=", ">", "=>")
@@ -18,12 +20,38 @@ class Program(object):
             "=>": "<=",
         }
         self.stack = []
-        self.states = 0
+        self.states_count = 0
+        self.states = {}
         self.always = {}
         self.next = {}
-
-    def abstract(self):
         self.parser()
+        self.expand()
+
+    def expand(self):
+        # TODO: Fix "always" support
+        for i in xrange(0, self.states_count):
+            if i in self.always and i in self.next:
+                next = self.next[i]
+                always = self.always[i]
+                formulae = [always[1], always[0], next]
+                self.states[i] = formulae
+            elif i in self.next:
+                next = self.next[i]
+                self.states[i] = next
+            elif i in self.always:
+                always = self.always[i]
+                self.states[i] = [always[1], always[0]]
+
+    def query(self, language=None):
+        if language:
+            if isinstance(language, BaseQueryLanguage):
+                query_language = BaseQueryLanguage(self.states,
+                                                   self.states_count)
+            else:
+                raise NotImplemented("Language not implemented yet")
+        else:
+            query_language = GremlinLanguage(self.states, self.states_count)
+        return query_language.generate()
 
     def parser(self, proposition=None):
         prop = proposition or self.proposition
@@ -32,9 +60,12 @@ class Program(object):
         prop = prop.replace("\n", "\\\n")
         expr = ast.parse(prop).body[0].value
         self.tree(expr)
-        if self.next:
-            self.states = sorted(self.next.keys())[-1] + 1
-        print self.states, self.always, self.next
+        if len(self.next) > 0:
+            self.states_count = sorted(self.next.keys())[-1] + 1
+        elif self.always:
+            self.states_count = 1
+        else:
+            self.states_count = 0
 
     def tree(self, expr):
         if isinstance(expr, ast.BoolOp):
@@ -59,21 +90,24 @@ class Program(object):
             for arg in expr.args:
                 self.tree(arg)
         elif isinstance(expr, ast.Num):
-            self.stack.append(expr.n)
+            self.stack.append("""{#%s#}""" % expr.n)
         elif isinstance(expr, ast.Str):
-            self.stack.append("\"%s\"" % expr.s)
+            self.stack.append("""{$%s$}""" % expr.s)
         elif isinstance(expr, ast.Name):
-            self.stack.append("""{{%s}}""" % expr.id)
+            expr_lower = expr.id.lower()
+            if expr_lower in ("true", "false"):
+                self.stack.append("""{<%s>}""" % expr_lower)
+            else:
+                self.stack.append("""{{%s}}""" % expr.id)
 
     def stack_reduce(self):
-        print self.stack
         if len(self.stack) >= 3:
             left = self.stack[-1]
             right = self.stack[-2]
             if ((self.is_atom(left) and self.is_atom(right))
                 or (self.is_expr(left) and self.is_expr(right))):
                 operator = self.stack[-3]
-                expr = "%s %s %s" % (right, operator, left)
+                expr = (right, operator, left)
                 if operator in self.arithmetics:
                     self.stack = self.stack[:-3]
                     self.stack.append(expr)
@@ -85,13 +119,11 @@ class Program(object):
                         self.add_always(next, logic, expr)
                     else:
                         self.add_next(next, logic, expr)
-        print self.stack
 
     def stack_split(self):
         always_count = 0
         next_count = 0
         logic = None
-        print self.stack
         for item in reversed(self.stack):
             if item == "always":
                 always_count += 1
@@ -115,55 +147,58 @@ class Program(object):
             self.always[from_state] = [logic, expr]
         else:
             current = self.always[from_state]
-            self.always[from_state] = ['(', current, ')', logic, expr]
+            self.always[from_state] = [current, logic, expr]
 
     def add_next(self, from_state, logic, expr):
         if from_state not in self.next:
             self.next[from_state] = [expr]
         else:
             current = self.next[from_state]
-            self.next[from_state] = ['(', current, ')', logic, expr]
+            self.next[from_state] = [current, logic, expr]
 
     def is_atom(self, value):
         return (isinstance(value, (int, float))
-                or str(value).startswith("{{"))
+                or str(value).startswith("{"))
 
     def is_expr(self, value):
         return (filter(lambda x: x in value, self.logics + self.arithmetics))
 
     def operator(self, expr):
+        op = None
         if isinstance(expr, (ast.And, ast.BitAnd)):
-            op =  "&"
+            op = "&"
         elif isinstance(expr, (ast.Or, ast.BitOr)):
-            op =  "|"
+            op = "|"
         elif isinstance(expr, (ast.Eq, ast.Is)):
-            op =  "=="
+            op = "=="
         elif isinstance(expr, (ast.NotEq, ast.IsNot)):
-            op =  "!="
+            op = "!="
         elif isinstance(expr, ast.Lt):
-            op =  "<"
+            op = "<"
         elif isinstance(expr, ast.LtE):
-            op =  "<="
+            op = "<="
         elif isinstance(expr, ast.Gt):
-            op =  ">"
+            op = ">"
         elif isinstance(expr, ast.GtE):
-            op =  "=>"
+            op = "=>"
         elif isinstance(expr, ast.Add):
-            op =  "+"
+            op = "+"
         elif isinstance(expr, ast.Sub):
-            op =  "-"
+            op = "-"
         elif isinstance(expr, ast.Mult):
-            op =  "*"
+            op = "*"
         elif isinstance(expr, ast.Div):
-            op =  "/"
+            op = "/"
+        elif isinstance(expr, ast.Mod):
+            op = "%"
         # elif isinstance(expr, (ast.Invert, ast.Not)):
-        #    op =  "not"
+        #    op = "not"
         # elif isinstance(expr, ast.RShift):
-        #    op =  "gets"
+        #    op = "gets"
         # elif isinstance(expr, ast.LShift):
-        #    op =  "igets"
+        #    op = "igets"
         # elif isinstance(expr, ast.FloorDiv):
-        #    op =  "equiv"
+        #    op = "equiv"
         else:
-            print op
+            print expr
         return op
