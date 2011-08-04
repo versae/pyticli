@@ -9,15 +9,15 @@ class Program(object):
     def __init__(self, proposition):
         self.proposition = proposition
         self.temporals = ("always", "next")
-        self.logics = ("&", "|", "==", "!=", "<", "<=", ">", "=>")
+        self.logics = ("&", "|", "==", "!=", "<", "<=", ">", ">=")
         self.arithmetics = ("+", "-", "*", "/", "%")
         self.opposites = {
             "==": "!=",
             "!=": "=",
             "<": ">",
             ">": "<",
-            "<=": "=>",
-            "=>": "<=",
+            "<=": ">=",
+            ">=": "<=",
         }
         self.stack = []
         self.states_count = 0
@@ -29,20 +29,24 @@ class Program(object):
 
     def expand(self):
         # TODO: Fix "always" support
-        for i in xrange(0, self.states_count):
-            if i in self.always and i in self.next:
-                next = self.next[i]
-                always = self.always[i]
-                formulae = [always[1], always[0], next]
-                self.states[i] = formulae
-            elif i in self.next:
-                next = self.next[i]
-                self.states[i] = next
-            elif i in self.always:
-                always = self.always[i]
-                self.states[i] = [always[1], always[0]]
+        for key, value in self.next.iteritems():
+            if isinstance(value, (list, tuple)):
+                self.states[key] = []
+                for item in value:
+                    if isinstance(item, (list, tuple)):
+                        self.states[key].append(["(", item, ")"])
+                    else:
+                        self.states[key].append(item)
+            else:
+                self.states[key] = value
+        for key, value in self.always.iteritems():
+            for i in xrange(key, self.states_count):
+                if i in self.states:
+                    self.states[i] = [value[1], value[0], self.states[i]]
+                else:
+                    self.states[i] = value[1]
 
-    def query(self, language=None):
+    def query(self, language=None, verbose=False):
         if language:
             if isinstance(language, BaseQueryLanguage):
                 query_language = BaseQueryLanguage(self.states,
@@ -51,7 +55,7 @@ class Program(object):
                 raise NotImplemented("Language not implemented yet")
         else:
             query_language = GremlinLanguage(self.states, self.states_count)
-        return query_language.generate()
+        return query_language.generate(verbose=verbose)
 
     def parser(self, proposition=None):
         prop = proposition or self.proposition
@@ -102,12 +106,15 @@ class Program(object):
 
     def stack_reduce(self):
         if len(self.stack) >= 3:
-            left = self.stack[-1]
-            right = self.stack[-2]
-            if ((self.is_atom(left) and self.is_atom(right))
-                or (self.is_expr(left) and self.is_expr(right))):
+            left = self.stack[-2]
+            right = self.stack[-1]
+            if self.are_valid_comparators(left, right):
                 operator = self.stack[-3]
-                expr = (right, operator, left)
+                # if isinstance(right, (list, tuple)):
+                #     right = ["(", right,")"]
+                # if isinstance(left, (list, tuple)):
+                #     left = ["(", left,")"]
+                expr = (left, operator, right)
                 if operator in self.arithmetics:
                     self.stack = self.stack[:-3]
                     self.stack.append(expr)
@@ -119,6 +126,12 @@ class Program(object):
                         self.add_always(next, logic, expr)
                     else:
                         self.add_next(next, logic, expr)
+
+    def are_valid_comparators(self, left, right):
+        return ((self.is_atom(left) and self.is_atom(right))
+                or (self.is_expr(left) and self.is_expr(right))
+                or isinstance(left, (list, tuple))
+                or isinstance(right, (list, tuple)))
 
     def stack_split(self):
         always_count = 0
@@ -180,7 +193,7 @@ class Program(object):
         elif isinstance(expr, ast.Gt):
             op = ">"
         elif isinstance(expr, ast.GtE):
-            op = "=>"
+            op = ">="
         elif isinstance(expr, ast.Add):
             op = "+"
         elif isinstance(expr, ast.Sub):
@@ -197,8 +210,8 @@ class Program(object):
         #    op = "gets"
         # elif isinstance(expr, ast.LShift):
         #    op = "igets"
-        # elif isinstance(expr, ast.FloorDiv):
+        #elif isinstance(expr, ast.FloorDiv):
         #    op = "equiv"
         else:
-            print expr
+            raise SyntaxError("invalid syntax: %s" % expr)
         return op

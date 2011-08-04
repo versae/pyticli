@@ -18,13 +18,17 @@ class BaseQueryLanguage(object):
             "=>": "<=",
         }
 
-    def generate(self):
+    def generate(self, verbose=False):
         raise NotImplemented("Subclasses must implemented this method.")
 
 
 class GremlinLanguage(BaseQueryLanguage):
 
-    def generate(self, separator="\n      "):
+    def generate(self, verbose=False):
+        if verbose:
+            separator = "\n      "
+        else:
+            separator = ""
         query = """g.v(0).outE{"initial"}"""
         for i in xrange(0, self.states_count):
             query = "%s%s" % (query, separator)
