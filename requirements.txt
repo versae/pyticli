@@ -2,3 +2,6 @@
 ipdb==0.4
 ipython==0.10.2
 wsgiref==0.1.2
+# neo4jrestclient==dev
+-e git+git://github.com/versae/neo4j-rest-client.git#egg=neo4jrestclient
+
