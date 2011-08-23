@@ -6,6 +6,8 @@ propositions = [
     """next(always(I==1 and next(I<5))) and next(next(next(J==2))) """ \
     """and next(J==3 or I==J+H) and I<4 or next(R<=5)""",
     """next(I // J)""",
+    """next(always(I==3))""",
+    """next(I==3) and next(J<1)""",
 ]
 
 for proposition in propositions:
@@ -14,3 +16,4 @@ for proposition in propositions:
         print Program(proposition).query(verbose=1)
     except Exception, e:
         print e
+print

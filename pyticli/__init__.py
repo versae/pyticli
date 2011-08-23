@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from languages import GremlinLanguage, BaseQueryLanguage
+from languages import BaseQueryLanguage
+from languages.gremlin import GremlinLanguage
 
 import ast
 
@@ -29,6 +30,8 @@ class Program(object):
 
     def expand(self):
         # TODO: Fix "always" support
+        # FIXME: self.next is not properly built.
+        print self.next
         for key, value in self.next.iteritems():
             if isinstance(value, (list, tuple)):
                 self.states[key] = []
@@ -39,12 +42,12 @@ class Program(object):
                         self.states[key].append(item)
             else:
                 self.states[key] = value
-        for key, value in self.always.iteritems():
-            for i in xrange(key, self.states_count):
-                if i in self.states:
-                    self.states[i] = [value[1], value[0], self.states[i]]
-                else:
-                    self.states[i] = value[1]
+#        for key, value in self.always.iteritems():
+#            for i in xrange(key, self.states_count):
+#                if i in self.states:
+#                    self.states[i] = [value[1], value[0], self.states[i]]
+#                else:
+#                    self.states[i] = value[1]
 
     def query(self, language=None, verbose=False):
         if language:
@@ -64,8 +67,13 @@ class Program(object):
         prop = prop.replace("\n", "\\\n")
         expr = ast.parse(prop).body[0].value
         self.tree(expr)
-        if len(self.next) > 0:
+        if len(self.next) > 0 and len(self.always) > 0:
+            self.states_count = max(sorted(self.next.keys())[-1] + 1,
+                                    sorted(self.always.keys())[-1] + 1)
+        elif len(self.next) > 0:
             self.states_count = sorted(self.next.keys())[-1] + 1
+        elif len(self.always) > 0:
+            self.states_count = sorted(self.always.keys())[-1] + 1
         elif self.always:
             self.states_count = 1
         else:

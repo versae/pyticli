@@ -45,7 +45,7 @@ class PyticliShell(cmd.Cmd):
         """Connect to a graph database.
         The first param is the type, althought right now only 'neo4j' through
         REST interface is available.
-        The second param es the URL to connect. """
+        The second param is the URL to connect. """
         params = args.strip().split(" ")
         self.type = params[0]
         self.url = params[1]
